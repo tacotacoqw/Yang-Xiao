@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>太空躲避游戏</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #000;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        
+        #gameContainer {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            background-color: #111;
+            overflow: hidden;
+        }
+        
+        #gameCanvas {
+            background-color: #000;
+            display: block;
+        }
+        
+        #startScreen, #gameOverScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+        }
+        
+        #gameOverScreen {
+            display: none;
+        }
+        
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        h1 {
+            font-size: 36px;
+            margin-bottom: 10px;
+            color: #4CAF50;
+        }
+        
+        p {
+            font-size: 18px;
+            margin-bottom: 20px;
+        }
+        
+        #scoreDisplay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        
+        <div id="scoreDisplay">分数: 0</div>
+        
+        <div id="startScreen">
+            <h1>太空躲避游戏</h1>
+            <p>使用方向键或WASD移动太空船，躲避陨石！</p>
+            <button id="startButton">开始游戏</button>
+        </div>
+        
+        <div id="gameOverScreen">
+            <h1>游戏结束</h1>
+            <p id="finalScore">你的分数: 0</p>
+            <button id="restartButton">再玩一次</button>
+        </div>
+    </div>
+
+    <script>
+        // 游戏变量
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const startButton = document.getElementById('startButton');
+        const restartButton = document.getElementById('restartButton');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const finalScoreDisplay = document.getElementById('finalScore');
+        
+        let gameRunning = false;
+        let score = 0;
+        
+        // 玩家飞船
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height - 60,
+            width: 50,
+            height: 50,
+            speed: 5,
+            dx: 0,
+            dy: 0
+        };
+        
+        // 陨石数组
+        let asteroids = [];
+        const asteroidSize = 40;
+        const asteroidSpeed = 3;
+        let asteroidSpawnRate = 60; // 帧数
+        
+        // 游戏循环变量
+        let animationId;
+        let frameCount = 0;
+        
+        // 图片资源
+        const images = {
+            player: null,
+            asteroid: null,
+            background: null
+        };
+        
+        // 加载图片
+        function loadImages() {
+            images.player = new Image();
+            images.player.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MCA1MCI+PHBhdGggZmlsbD0iIzRjYWY1MCIgZD0iTTI1IDVMMTUgMjBIMzVMMjUgNXpNMjUgNDVMMTUgMzBIMzVMMjUgNDV6Ii8+PHBhdGggZmlsbD0iIzM2ODc0ZSIgZD0iTTI1IDE1TDMwIDI1TDI1IDM1TDIwIDI1TDI1IDE1eiIvPjwvc3ZnPg==';
+            
+            images.asteroid = new Image();
+            images.asteroid.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MCA0MCI+PGNpcmNsZSBmaWxsPSIjODg1NDQ0IiBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiLz48Y2lyY2xlIGZpbGw9IiM2YjNiM2IiIGN4PSIyNCIgY3k9IjE2IiByPSI1Ii8+PGNpcmNsZSBmaWxsPSIjN2M0YzRjIiBjeD0iMTUiIGN5PSIyNSIgcj0iNyIvPjwvc3ZnPg==';
+            
+            images.background = new Image();
+            images.background.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MDAiIGhlaWdodD0iNjAwIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMDAwIi8+PGNpcmNsZSBjeD0iMTAwIiBjeT0iODAiIHI9IjIiIGZpbGw9IiNmZmYiIG9wYWNpdHk9IjAuOCIvPjxjaXJjbGUgY3g9IjIwMCIgY3k9IjE1MCIgcj0iMS41IiBmaWxsPSIjZmZmIiBvcGFjaXR5PSIwLjYiLz48Y2lyY2xlIGN4PSI3MDAiIGN5PSIxMDAiIHI9IjMiIGZpbGw9IiNmZmYiIG9wYWNpdHk9IjAuNyIvPjxjaXJjbGUgY3g9IjY1MCIgY3k9IjMwMCIgcj0iMiIgZmlsbD0iI2ZmZiIgb3BhY2l0eT0iMC44Ii8+PGNpcmNsZSBjeD0iNDAwIiBjeT0iMjAwIiByPSIxLjUiIGZpbGw9IiNmZmYiIG9wYWNpdHk9IjAuOSIvPjxjaXJjbGUgY3g9IjUwMCIgY3k9IjQwMCIgcj0iMi41IiBmaWxsPSIjZmZmIiBvcGFjaXR5PSIwLjYiLz48Y2lyY2xlIGN4PSIzMDAiIGN5PSI1MDAiIHI9IjIiIGZpbGw9IiNmZmYiIG9wYWNpdHk9IjAuNyIvPjwvc3ZnPg==';
+        }
+        
+        // 初始化游戏
+        function initGame() {
+            player.x = canvas.width / 2;
+            player.y = canvas.height - 60;
+            asteroids = [];
+            score = 0;
+            frameCount = 0;
+            asteroidSpawnRate = 60;
+            updateScore();
+        }
+        
+        // 绘制玩家
+        function drawPlayer() {
+            if (images.player.complete) {
+                ctx.drawImage(images.player, player.x - player.width/2, player.y - player.height/2, player.width, player.height);
+            } else {
+                ctx.fillStyle = '#4CAF50';
+                ctx.beginPath();
+                ctx.moveTo(player.x, player.y - player.height/2);
+                ctx.lineTo(player.x + player.width/2, player.y + player.height/2);
+                ctx.lineTo(player.x - player.width/2, player.y + player.height/2);
+                ctx.closePath();
+                ctx.fill();
+                
+                ctx.fillStyle = '#36874e';
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.width/4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        // 绘制陨石
+        function drawAsteroids() {
+            asteroids.forEach(asteroid => {
+                if (images.asteroid.complete) {
+                    ctx.drawImage(images.asteroid, asteroid.x - asteroidSize/2, asteroid.y - asteroidSize/2, asteroidSize, asteroidSize);
+                } else {
+                    ctx.fillStyle = '#885444';
+                    ctx.beginPath();
+                    ctx.arc(asteroid.x, asteroid.y, asteroidSize/2, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.fillStyle = '#6b3b3b';
+                    ctx.beginPath();
+                    ctx.arc(asteroid.x + asteroidSize/5, asteroid.y - asteroidSize/5, asteroidSize/8, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+        }
+        
+        // 绘制背景
+        function drawBackground() {
+            if (images.background.complete) {
+                ctx.drawImage(images.background, 0, 0, canvas.width, canvas.height);
+            } else {
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // 绘制星星
+                ctx.fillStyle = 'white';
+                const stars = [
+                    {x: 100, y: 80, r: 2, o: 0.8},
+                    {x: 200, y: 150, r: 1.5, o: 0.6},
+                    {x: 700, y: 100, r: 3, o: 0.7},
+                    {x: 650, y: 300, r: 2, o: 0.8},
+                    {x: 400, y: 200, r: 1.5, o: 0.9},
+                    {x: 500, y: 400, r: 2.5, o: 0.6},
+                    {x: 300, y: 500, r: 2, o: 0.7}
+                ];
+                
+                stars.forEach(star => {
+                    ctx.globalAlpha = star.o;
+                    ctx.beginPath();
+                    ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                });
+            }
+        }
+        
+        // 更新玩家位置
+        function updatePlayer() {
+            player.x += player.dx;
+            player.y += player.dy;
+            
+            // 边界检查
+            if (player.x < player.width/2) {
+                player.x = player.width/2;
+            }
+            if (player.x > canvas.width - player.width/2) {
+                player.x = canvas.width - player.width/2;
+            }
+            if (player.y < player.height/2) {
+                player.y = player.height/2;
+            }
+            if (player.y > canvas.height - player.height/2) {
+                player.y = canvas.height - player.height/2;
+            }
+        }
+        
+        // 生成陨石
+        function spawnAsteroid() {
+            const x = Math.random() * (canvas.width - asteroidSize) + asteroidSize/2;
+            const y = -asteroidSize/2;
+            
+            asteroids.push({
+                x: x,
+                y: y,
+                width: asteroidSize,
+                height: asteroidSize,
+                speed: asteroidSpeed + Math.random() * 2
+            });
+        }
+        
+        // 更新陨石位置
+        function updateAsteroids() {
+            for (let i = asteroids.length - 1; i >= 0; i--) {
+                asteroids[i].y += asteroids[i].speed;
+                
+                // 移除屏幕外的陨石
+                if (asteroids[i].y > canvas.height + asteroidSize/2) {
+                    asteroids.splice(i, 1);
+                    score += 1;
+                    updateScore();
+                }
+            }
+            
+            // 随着分数增加，增加陨石生成频率
+            if (frameCount % Math.max(10, asteroidSpawnRate - Math.floor(score/10)) === 0) {
+                spawnAsteroid();
+            }
+        }
+        
+        // 碰撞检测
+        function checkCollisions() {
+            for (let i = 0; i < asteroids.length; i++) {
+                const asteroid = asteroids[i];
+                
+                // 简单的矩形碰撞检测
+                if (
+                    player.x - player.width/2 < asteroid.x + asteroid.width/2 &&
+                    player.x + player.width/2 > asteroid.x - asteroid.width/2 &&
+                    player.y - player.height/2 < asteroid.y + asteroid.height/2 &&
+                    player.y + player.height/2 > asteroid.y - asteroid.height/2
+                ) {
+                    gameOver();
+                    break;
+                }
+            }
+        }
+        
+        // 更新分数显示
+        function updateScore() {
+            scoreDisplay.textContent = `分数: ${score}`;
+        }
+        
+        // 游戏结束
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+            finalScoreDisplay.textContent = `你的分数: ${score}`;
+            gameOverScreen.style.display = 'flex';
+        }
+        
+        // 游戏主循环
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            drawBackground();
+            drawPlayer();
+            drawAsteroids();
+            
+            if (gameRunning) {
+                updatePlayer();
+                updateAsteroids();
+                checkCollisions();
+                frameCount++;
+            }
+            
+            animationId = requestAnimationFrame(gameLoop);
+        }
+        
+        // 键盘控制
+        function keyDownHandler(e) {
+            if (gameRunning) {
+                if (e.key === 'Right' || e.key === 'ArrowRight' || e.key === 'd') {
+                    player.dx = player.speed;
+                } else if (e.key === 'Left' || e.key === 'ArrowLeft' || e.key === 'a') {
+                    player.dx = -player.speed;
+                } else if (e.key === 'Up' || e.key === 'ArrowUp' || e.key === 'w') {
+                    player.dy = -player.speed;
+                } else if (e.key === 'Down' || e.key === 'ArrowDown' || e.key === 's') {
+                    player.dy = player.speed;
+                }
+            }
+        }
+        
+        function keyUpHandler(e) {
+            if (e.key === 'Right' || e.key === 'ArrowRight' || e.key === 'd') {
+                player.dx = 0;
+            } else if (e.key === 'Left' || e.key === 'ArrowLeft' || e.key === 'a') {
+                player.dx = 0;
+            } else if (e.key === 'Up' || e.key === 'ArrowUp' || e.key === 'w') {
+                player.dy = 0;
+            } else if (e.key === 'Down' || e.key === 'ArrowDown' || e.key === 's') {
+                player.dy = 0;
+            }
+        }
+        
+        // 事件监听
+        startButton.addEventListener('click', () => {
+            startScreen.style.display = 'none';
+            gameRunning = true;
+            initGame();
+        });
+        
+        restartButton.addEventListener('click', () => {
+            gameOverScreen.style.display = 'none';
+            gameRunning = true;
+            initGame();
+        });
+        
+        document.addEventListener('keydown', keyDownHandler);
+        document.addEventListener('keyup', keyUpHandler);
+        
+        // 初始化
+        loadImages();
+        gameLoop();
+    </script>
+</body>
+</html>
